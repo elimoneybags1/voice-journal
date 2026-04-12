@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --bg-base: #1A1A1A;
+  --bg-surface: #242424;
+  --bg-elevated: #2C2C2C;
+  --bg-hover: #333333;
+  --text-primary: #E5E5E5;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --accent: #5B9EF4;
+  --accent-muted: #3D6DA8;
+  --accent-pressed: #4A87D4;
+  --border: #2E2E2E;
+  --border-light: #3A3A3A;
+  --recording: #E8845C;
+  --recording-pressed: #D0734B;
+  --success: #4ADE80;
+  --danger: #EF4444;
+}
+
+@theme inline {
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Button press feedback ---- */
+.btn-press {
+  transition: transform 0.1s ease, opacity 0.1s ease, background 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+}
+.btn-press:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+/* Card press — subtler */
+.card-press {
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+.card-press:active {
+  transform: scale(0.98);
+  background: var(--bg-elevated) !important;
+}
+
+/* Nav link press */
+.nav-press {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+.nav-press:active {
+  transform: scale(0.9);
+  opacity: 0.7;
+}
+
+/* Recording pulse */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.recording-pulse {
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Waveform bars */
+@keyframes wave {
+  0%, 100% { height: 12px; }
+  50% { height: 28px; }
+}
+.wave-bar {
+  animation: wave 1s ease-in-out infinite;
+}
+
+/* Safe area for iOS */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
