@@ -142,10 +142,20 @@ export default function EntryDetailPage({
         {/* Audio player */}
         {entry.audio_url && (
           <div
-            className="flex items-center gap-3 p-3.5 rounded-xl"
+            className="p-3.5 rounded-xl"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
           >
-            <audio controls src={entry.audio_url} className="w-full h-9" style={{ filter: "invert(0.85)" }} />
+            <audio
+              controls
+              src={entry.audio_url}
+              className="w-full"
+              style={{ height: 40, borderRadius: 8 }}
+            />
+            {entry.duration_seconds && (
+              <p className="text-[11px] mt-1.5 font-mono" style={{ color: "var(--text-muted)" }}>
+                {Math.floor(entry.duration_seconds / 60)}:{(entry.duration_seconds % 60).toString().padStart(2, "0")}
+              </p>
+            )}
           </div>
         )}
 

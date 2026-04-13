@@ -157,13 +157,15 @@ cd frontend && vercel --prod
 
 ## Current Status
 - [x] Backend scaffolded (FastAPI, all routers and services)
-- [x] Frontend built (Next.js PWA, all pages, demo mode working)
+- [x] Frontend built (Next.js PWA, all pages)
 - [x] Supabase project created, storage bucket live
 - [x] Groq API key configured (Whisper + Llama 3.3 70B)
 - [x] Switched from MiniMax to Groq for all AI (free tier, no $25 minimum)
-- [ ] Run schema.sql in Supabase SQL Editor
-- [ ] Test full pipeline locally (record → transcribe → tag → save)
-- [ ] Switch frontend from demo mode to real API calls
+- [x] Schema.sql run in Supabase SQL Editor (all 4 tables + indexes + RLS)
+- [x] Full pipeline tested locally (record → transcribe → tag → save)
+- [x] Frontend wired to real API (auth, recording, entries, search, insights)
+- [x] Error handling hardened (retries, graceful degradation, user-facing errors)
+- [x] Duration tracking, min recording length, PWA icons
 - [ ] Deploy backend to Railway
 - [ ] Deploy frontend to Vercel
 - [ ] Add to phone home screen and dogfood

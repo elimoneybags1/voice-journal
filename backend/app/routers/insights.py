@@ -54,19 +54,21 @@ async def weekly_summary(
     if not entries.data:
         return {"summary": None, "message": "No entries for this week"}
 
-    # Generate summary
+    # Generate summary (graceful — returns defaults on failure)
     summary_data = await generate_weekly_summary(entries.data, week_of)
 
-    # Cache it
+    # Cache it (ignore cache errors)
     record = {
         "user_id": user["id"],
         "week_start": week_of.isoformat(),
         "week_end": week_end.isoformat(),
         **summary_data,
     }
-    result = supabase.table("weekly_summaries").insert(record).execute()
-
-    return {"summary": result.data[0] if result.data else record}
+    try:
+        result = supabase.table("weekly_summaries").insert(record).execute()
+        return {"summary": result.data[0] if result.data else record}
+    except Exception:
+        return {"summary": record}
 
 
 class AskRequest(BaseModel):

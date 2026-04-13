@@ -1,8 +1,12 @@
 import json
+import logging
+import re
 
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -26,35 +30,65 @@ Rules:
 - Keep summary concise and in first person
 - Pick the most specific subcategory you can infer from context"""
 
+DEFAULT_METADATA = {
+    "title": "Untitled Entry",
+    "summary": "",
+    "tags": [],
+    "mood": "neutral",
+    "category": "Daily Life",
+    "subcategory": "",
+    "people": [],
+    "action_items": [],
+}
+
+
+def _extract_json(content: str) -> dict:
+    """Extract JSON from a response that may be wrapped in markdown fences."""
+    content = content.strip()
+
+    # Try to extract from markdown fences
+    fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", content, re.DOTALL)
+    if fence_match:
+        content = fence_match.group(1)
+
+    return json.loads(content)
+
 
 async def tag_transcript(transcript: str) -> dict:
     """Use Groq Llama to extract structured metadata from a transcript."""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            GROQ_CHAT_URL,
-            headers={
-                "Authorization": f"Bearer {settings.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": transcript},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 500,
-                "response_format": {"type": "json_object"},
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                GROQ_CHAT_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.groq_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": transcript},
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 500,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            result = _extract_json(content)
 
-        # Parse JSON from response, stripping markdown fences if present
-        content = content.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1]
-            content = content.rsplit("```", 1)[0]
+            # Merge with defaults so missing keys don't break things
+            return {**DEFAULT_METADATA, **result}
 
-        return json.loads(content)
+    except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+        logger.error("Tagger API error: %s", e)
+        return {**DEFAULT_METADATA, "title": transcript[:50].strip() + "..."}
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        logger.error("Tagger JSON parse error: %s", e)
+        return {**DEFAULT_METADATA, "title": transcript[:50].strip() + "..."}
+    except Exception as e:
+        logger.error("Tagger unexpected error: %s", e)
+        return {**DEFAULT_METADATA, "title": transcript[:50].strip() + "..."}

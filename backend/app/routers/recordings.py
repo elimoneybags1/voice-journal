@@ -1,13 +1,16 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from supabase import create_client
 
 from app.config import settings
 from app.deps import get_current_user
 from app.services.tagger import tag_transcript
 from app.services.transcription import transcribe_audio
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -21,6 +24,7 @@ def _get_supabase():
 @router.post("/upload")
 async def upload_recording(
     file: UploadFile,
+    duration_seconds: int | None = Form(default=None),
     user: dict = Depends(get_current_user),
 ):
     """Upload audio → store → transcribe → tag → save entry."""
@@ -30,6 +34,9 @@ async def upload_recording(
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large (max 25MB)")
+
+    if len(audio_bytes) < 1000:
+        raise HTTPException(status_code=400, detail="Recording too short")
 
     supabase = _get_supabase()
     entry_id = str(uuid.uuid4())
@@ -46,12 +53,16 @@ async def upload_recording(
     audio_url = f"{settings.supabase_url}/storage/v1/object/public/recordings/{storage_path}"
 
     # 2. Transcribe with Groq Whisper
-    transcript = await transcribe_audio(audio_bytes, file.filename or "recording.webm")
+    try:
+        transcript = await transcribe_audio(audio_bytes, file.filename or "recording.webm")
+    except RuntimeError as e:
+        logger.error("Transcription failed for entry %s: %s", entry_id, e)
+        raise HTTPException(status_code=503, detail=f"Transcription failed: {e}. Try again.")
 
-    if not transcript:
-        raise HTTPException(status_code=422, detail="Could not transcribe audio")
+    if not transcript or transcript.strip() in (".", ""):
+        raise HTTPException(status_code=422, detail="Could not detect any speech. Try speaking louder or longer.")
 
-    # 3. Tag with MiniMax
+    # 3. Tag with Groq Llama (graceful degradation — save entry even if tagging fails)
     metadata = await tag_transcript(transcript)
 
     # 4. Save to database
@@ -63,12 +74,12 @@ async def upload_recording(
         "summary": metadata.get("summary", ""),
         "tags": metadata.get("tags", []),
         "mood": metadata.get("mood", "neutral"),
-        "category": metadata.get("category", "other"),
+        "category": metadata.get("category", "Daily Life"),
         "subcategory": metadata.get("subcategory", ""),
         "people": metadata.get("people", []),
         "action_items": metadata.get("action_items", []),
         "audio_url": audio_url,
-        "duration_seconds": None,
+        "duration_seconds": duration_seconds,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

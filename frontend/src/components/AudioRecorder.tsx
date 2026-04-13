@@ -3,6 +3,8 @@
 import { useCallback, useRef, useState } from "react";
 import { uploadRecording } from "@/lib/api";
 
+const MIN_DURATION = 2; // minimum 2 seconds
+
 interface Props {
   onUploadComplete?: () => void;
 }
@@ -61,16 +63,19 @@ export default function AudioRecorder({ onUploadComplete }: Props) {
     mediaRecorder.stream.getTracks().forEach((t) => t.stop());
 
     const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
-    if (blob.size === 0) {
-      setError("No audio recorded");
+    const recordedDuration = duration;
+
+    if (blob.size === 0 || recordedDuration < MIN_DURATION) {
+      setError(recordedDuration < MIN_DURATION ? "Recording too short (min 2 seconds)" : "No audio recorded");
+      setDuration(0);
       return;
     }
 
-    // Upload
+    // Upload with duration
     setUploading(true);
     setError("");
     try {
-      await uploadRecording(blob, "recording.webm");
+      await uploadRecording(blob, "recording.webm", recordedDuration);
       onUploadComplete?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");

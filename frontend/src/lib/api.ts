@@ -127,8 +127,23 @@ export async function deleteEntry(id: string) {
 }
 
 // Upload recording
-export async function uploadRecording(audioBlob: Blob, filename: string) {
-  return apiUpload<{ entry: Entry }>("/recordings/upload", audioBlob, filename);
+export async function uploadRecording(audioBlob: Blob, filename: string, durationSeconds?: number) {
+  const headers = await getAuthHeaders();
+  const formData = new FormData();
+  formData.append("file", audioBlob, filename);
+  if (durationSeconds !== undefined) {
+    formData.append("duration_seconds", String(durationSeconds));
+  }
+  const res = await fetch(`${API_URL}/recordings/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new Error(data.detail || `Upload error: ${res.status}`);
+  }
+  return res.json() as Promise<{ entry: Entry }>;
 }
 
 // Search

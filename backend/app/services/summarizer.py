@@ -1,16 +1,20 @@
 import json
+import logging
+import re
 from datetime import date
 
 import httpx
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 async def _groq_chat(system: str, user: str, max_tokens: int = 1000) -> str:
-    """Call Groq chat API."""
-    async with httpx.AsyncClient(timeout=60) as client:
+    """Call Groq chat API with error handling."""
+    async with httpx.AsyncClient(timeout=90) as client:
         resp = await client.post(
             GROQ_CHAT_URL,
             headers={
@@ -32,6 +36,15 @@ async def _groq_chat(system: str, user: str, max_tokens: int = 1000) -> str:
         return data["choices"][0]["message"]["content"]
 
 
+def _extract_json(content: str) -> dict:
+    """Extract JSON from a response that may be wrapped in markdown fences."""
+    content = content.strip()
+    fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", content, re.DOTALL)
+    if fence_match:
+        content = fence_match.group(1)
+    return json.loads(content)
+
+
 async def generate_weekly_summary(entries: list[dict], week_start: date) -> dict:
     """Generate a weekly digest from journal entries."""
     entries_text = "\n\n---\n\n".join(
@@ -50,16 +63,34 @@ Return ONLY valid JSON:
   "open_action_items": ["unresolved items"]
 }"""
 
-    content = await _groq_chat(system, f"Week of {week_start}:\n\n{entries_text}")
-    content = content.strip()
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1]
-        content = content.rsplit("```", 1)[0]
-    return json.loads(content)
+    default = {
+        "summary": "Not enough data to generate a summary yet.",
+        "themes": [],
+        "mood_trend": "unknown",
+        "highlights": [],
+        "open_action_items": [],
+    }
+
+    try:
+        content = await _groq_chat(system, f"Week of {week_start}:\n\n{entries_text}")
+        result = _extract_json(content)
+        return {**default, **result}
+    except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+        logger.error("Weekly summary API error: %s", e)
+        return default
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.error("Weekly summary JSON error: %s", e)
+        return default
+    except Exception as e:
+        logger.error("Weekly summary error: %s", e)
+        return default
 
 
 async def ask_journal(question: str, entries: list[dict], history: list[dict] | None = None) -> str:
     """Answer a question about the user's journal entries."""
+    if not entries:
+        return "I don't have any journal entries to reference yet. Record some notes first!"
+
     entries_text = "\n\n---\n\n".join(
         f"**{e['title']}** ({e['created_at'][:10]})\n{e['transcript']}"
         for e in entries
@@ -80,4 +111,8 @@ Answer their question based on the entries. Be personal, insightful, and referen
             for m in history
         ) + f"\nUser: {question}"
 
-    return await _groq_chat(system, messages_text, max_tokens=1500)
+    try:
+        return await _groq_chat(system, messages_text, max_tokens=1500)
+    except Exception as e:
+        logger.error("Ask journal error: %s", e)
+        return "Sorry, I couldn't process that right now. Please try again in a moment."
