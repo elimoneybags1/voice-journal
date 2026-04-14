@@ -13,7 +13,9 @@ mkdir -p "$QUEUE_DIR" "$LOG_DIR"
 echo "[$(date)] Strategist starting..." >> "$LOG_DIR/strategist.log"
 
 # ─── 1. RESEARCH PHASE (Opus thinks) ───
-claude --model opus -p "$(cat <<'PROMPT'
+# Use sonnet for planning — 90% as good as opus at 1/5 the cost
+# Switch to opus if you want higher quality plans
+claude --model sonnet -p "$(cat <<'PROMPT'
 You are the Voice Journal product strategist. Your job is to research and plan improvements.
 
 ## Your context
