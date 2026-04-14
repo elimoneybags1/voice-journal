@@ -1,79 +1,83 @@
 #!/bin/bash
-# CONTENT POSTER — reviews generated content drafts and posts to social media
-# For now: generates drafts. Add API keys to auto-post.
+# CONTENT ENGINE — daily content generation, not just weekly
+# Generates platform-specific content based on research + product updates
 set -euo pipefail
 
 PROJECT_DIR="$HOME/voice-journal"
 CONTENT_DIR="$PROJECT_DIR/scripts/agents/content"
+RESEARCH_DIR="$PROJECT_DIR/scripts/agents/research"
 LOG_DIR="$PROJECT_DIR/scripts/agents/logs"
 
 mkdir -p "$CONTENT_DIR" "$LOG_DIR"
 
-# ─── Generate a batch of content ───
-claude --model sonnet -p "$(cat <<'PROMPT'
-You are the Voice Journal social media manager. Generate a week of content.
+DATE=$(date +%Y%m%d)
+DAY_OF_WEEK=$(date +%u)
 
-Voice Journal is a voice-first journaling app — you record a voice note from your
-phone, AI transcribes and organizes it into folders with tags, mood tracking,
-and weekly summaries. Think: if Day One and Otter.ai had a baby.
+# Load latest research for context
+LATEST_RESEARCH=""
+if ls "$RESEARCH_DIR"/*.md 1>/dev/null 2>&1; then
+    LATEST_RESEARCH=$(cat "$RESEARCH_DIR"/*.md 2>/dev/null | tail -500)
+fi
 
-Target audience: productivity nerds, journalers, self-improvement people, founders.
+# Get recent git activity for "building in public" content
+RECENT_COMMITS=$(cd "$PROJECT_DIR" && git log --oneline -10 2>/dev/null)
 
-Generate these 7 pieces of content:
+# Daily content varies by day
+case $DAY_OF_WEEK in
+    1) CONTENT_TYPE="twitter-thread"
+       INSTRUCTIONS="Write a Twitter/X thread (5-8 tweets). Topic: a 'building in public' update about what was shipped last week. Use the git log below for real updates. Make it authentic, not corporate. Hook the first tweet HARD."
+       ;;
+    2) CONTENT_TYPE="hot-takes"
+       INSTRUCTIONS="Write 3 standalone Twitter/X tweets. Each should be a hot take or insight about journaling, voice notes, or AI productivity. Contrarian > generic. Each tweet should stand alone and get engagement."
+       ;;
+    3) CONTENT_TYPE="linkedin-post"
+       INSTRUCTIONS="Write a LinkedIn post about building Voice Journal. Professional but personal. Focus on one specific lesson learned or decision made. Include a question at the end to drive comments."
+       ;;
+    4) CONTENT_TYPE="reddit-post"
+       INSTRUCTIONS="Write a Reddit post for r/productivity, r/journaling, or r/SideProject. Genuine, helpful tone. Lead with a problem you solved, not a product pitch. Include 'I built this because...' angle."
+       ;;
+    5) CONTENT_TYPE="tiktok-scripts"
+       INSTRUCTIONS="Write 3 short-form video scripts (TikTok/Reels). Each 30-60 seconds. Format: HOOK (first 3 seconds) → CONTENT → CTA. Topics: voice journaling tips, app demo walkthrough, 'why I stopped typing my journal'."
+       ;;
+    6) CONTENT_TYPE="seo-blog"
+       INSTRUCTIONS="Write a 500-word SEO blog post draft. Target keyword: 'voice journaling app' or 'AI journal'. Include H2 headers, natural keyword usage, and a CTA to try Voice Journal. Helpful > salesy."
+       ;;
+    7) CONTENT_TYPE="weekly-roundup"
+       INSTRUCTIONS="Write a weekly content roundup: 1) Newsletter-style email (3 paragraphs), 2) A Product Hunt-ready tagline + 3-sentence description, 3) App Store description (200 words). Make each feel different."
+       ;;
+esac
 
-1. **Twitter/X thread** (5-7 tweets): "Why I switched from typing to voice journaling"
-   - Hook first tweet hard
-   - Include a personal-feeling anecdote
-   - End with soft CTA
+echo "[$(date)] Content engine: $CONTENT_TYPE" >> "$LOG_DIR/content.log"
 
-2. **Twitter/X single tweet**: Product update / feature announcement
-   - Screenshot-worthy, concise
+claude --model sonnet -p "$(cat <<PROMPT
+You are the content creator for Voice Journal — a voice-first AI journaling app.
+Record a voice note, AI transcribes and organizes it. Think Day One meets Otter.ai.
 
-3. **Twitter/X single tweet**: Hot take about journaling
-   - Contrarian, gets engagement
+## Today's task: $CONTENT_TYPE
 
-4. **LinkedIn post**: "Building in public" update about Voice Journal
-   - Professional but authentic tone
-   - What I built this week, what I learned
+$INSTRUCTIONS
 
-5. **Reddit post** (r/productivity or r/journaling):
-   - Genuine, not salesy
-   - "I built this thing because..." angle
+## Context from recent research:
+$LATEST_RESEARCH
 
-6. **Instagram/TikTok caption**: For a screen recording demo
-   - Short, punchy, emoji-ok
-   - Hook + CTA
+## Recent development activity:
+$RECENT_COMMITS
 
-7. **Product Hunt tagline + description** (for future launch)
-   - Tagline: under 60 chars
-   - Description: 3 sentences
+## Brand voice:
+- Authentic, builder-first (indie dev building for himself, then others)
+- Smart but not pretentious
+- Specific > vague ("I shipped voice commands today" not "exciting updates!")
+- Slight edge / opinions welcome
+- Emoji sparingly, never cringe
 
-Format each as a separate section with a header. Include hashtags where relevant.
+## Rules:
+- Each piece should feel native to its platform
+- Include hashtags where relevant
+- Include a soft CTA (never "buy now", more like "been testing this, thoughts?")
+- Reference real features that actually exist in the app
 PROMPT
-)" --allowedTools "Read,Write" \
-  --output-format json 2>/dev/null | jq -r '.result' > "$CONTENT_DIR/weekly_content_$(date +%Y%m%d).md"
+)" --allowedTools "Read,WebSearch" \
+  --output-format json 2>/dev/null | jq -r '.result' > "$CONTENT_DIR/${CONTENT_TYPE}_${DATE}.md"
 
-echo "[$(date)] Content batch generated" >> "$LOG_DIR/content.log"
-echo "Content saved to: $CONTENT_DIR/weekly_content_$(date +%Y%m%d).md"
-echo ""
-echo "To auto-post, add these API keys to .env:"
-echo "  TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN"
-echo "  LINKEDIN_ACCESS_TOKEN"
-echo "Then uncomment the posting section in this script."
-
-# ─── AUTO-POST (uncomment when API keys are set) ───
-# source "$PROJECT_DIR/scripts/agents/.env"
-#
-# # Post to Twitter/X using the API
-# # pip install tweepy
-# python3 - <<'PYTHON'
-# import tweepy, os
-# client = tweepy.Client(
-#     consumer_key=os.environ["TWITTER_API_KEY"],
-#     consumer_secret=os.environ["TWITTER_API_SECRET"],
-#     access_token=os.environ["TWITTER_ACCESS_TOKEN"],
-#     access_token_secret=os.environ["TWITTER_ACCESS_SECRET"],
-# )
-# # Read today's single tweet from the content file
-# # Parse and post...
-# PYTHON
+echo "Content saved: $CONTENT_DIR/${CONTENT_TYPE}_${DATE}.md"
+echo "[$(date)] Content complete: $CONTENT_TYPE" >> "$LOG_DIR/content.log"

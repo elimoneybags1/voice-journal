@@ -1,36 +1,39 @@
 #!/bin/bash
-# FULL PIPELINE — run strategist → workers → content in one shot
-# This is what the cron job calls
+# FULL PIPELINE — aggressive autonomous development + marketing
+# Runs multiple times per day via cron
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
-echo "════════════════════════════════════════════"
-echo "  Voice Journal Agent Pipeline"
-echo "  $(date)"
-echo "════════════════════════════════════════════"
-echo ""
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+LOG="$LOG_DIR/pipeline_$(date +%Y%m%d).log"
 
-# Step 1: Strategist (Opus) researches and plans
-echo "▸ Phase 1: Strategist thinking..."
-bash "$SCRIPT_DIR/strategist.sh" 2>&1 | tee -a "$LOG_DIR/pipeline_$(date +%Y%m%d).log"
-echo ""
+echo "════════════════════════════════════════════" | tee -a "$LOG"
+echo "  Voice Journal Agent Pipeline — $TIMESTAMP" | tee -a "$LOG"
+echo "════════════════════════════════════════════" | tee -a "$LOG"
 
-# Step 2: Workers (Haiku/Sonnet) execute code tasks
-echo "▸ Phase 2: Workers executing..."
-bash "$SCRIPT_DIR/worker.sh" 2>&1 | tee -a "$LOG_DIR/pipeline_$(date +%Y%m%d).log"
-echo ""
+# ─── Phase 1: STRATEGIST — research + plan ───
+echo "▸ Phase 1: Strategist researching..." | tee -a "$LOG"
+bash "$SCRIPT_DIR/strategist.sh" 2>&1 | tee -a "$LOG"
 
-# Step 3: Content generation (weekly, skip if not Monday)
-if [ "$(date +%u)" = "1" ]; then
-    echo "▸ Phase 3: Weekly content batch..."
-    bash "$SCRIPT_DIR/content-poster.sh" 2>&1 | tee -a "$LOG_DIR/pipeline_$(date +%Y%m%d).log"
-else
-    echo "▸ Phase 3: Content runs on Mondays, skipping."
-fi
+# ─── Phase 2: WORKERS — execute code tasks in parallel ───
+echo "▸ Phase 2: Workers building..." | tee -a "$LOG"
+bash "$SCRIPT_DIR/worker.sh" 2>&1 | tee -a "$LOG"
 
-echo ""
-echo "Pipeline complete. Check GitHub for PRs."
-echo "════════════════════════════════════════════"
+# ─── Phase 3: RESEARCHER — deep dives on product/market ───
+echo "▸ Phase 3: Researcher exploring..." | tee -a "$LOG"
+bash "$SCRIPT_DIR/researcher.sh" 2>&1 | tee -a "$LOG"
+
+# ─── Phase 4: CONTENT — daily, not just mondays ───
+echo "▸ Phase 4: Content generation..." | tee -a "$LOG"
+bash "$SCRIPT_DIR/content-poster.sh" 2>&1 | tee -a "$LOG"
+
+# ─── Phase 5: REVIEWER — check all open PRs for quality ───
+echo "▸ Phase 5: PR review..." | tee -a "$LOG"
+bash "$SCRIPT_DIR/reviewer.sh" 2>&1 | tee -a "$LOG"
+
+echo "" | tee -a "$LOG"
+echo "Pipeline complete. $(date)" | tee -a "$LOG"
+echo "════════════════════════════════════════════" | tee -a "$LOG"
