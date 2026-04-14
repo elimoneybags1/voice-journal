@@ -81,3 +81,12 @@ PROMPT
 
 echo "Content saved: $CONTENT_DIR/${CONTENT_TYPE}_${DATE}.md"
 echo "[$(date)] Content complete: $CONTENT_TYPE" >> "$LOG_DIR/content.log"
+
+# ─── AUTO-POST if API keys are configured ───
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo "Auto-posting..."
+    bash "$SCRIPT_DIR/posters/auto-post.sh" 2>&1 || echo "Auto-post skipped (check API keys)"
+else
+    echo "No .env file — content saved as draft only."
+    echo "To enable auto-posting: cp $SCRIPT_DIR/.env.example $SCRIPT_DIR/.env"
+fi
