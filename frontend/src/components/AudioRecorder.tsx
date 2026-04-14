@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { uploadRecording } from "@/lib/api";
+import { uploadRecording, type UploadResult, type CommandResult } from "@/lib/api";
 
 const MIN_DURATION = 2; // minimum 2 seconds
 
 interface Props {
   onUploadComplete?: () => void;
+  onCommandResult?: (result: CommandResult) => void;
 }
 
-export default function AudioRecorder({ onUploadComplete }: Props) {
+export default function AudioRecorder({ onUploadComplete, onCommandResult }: Props) {
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -17,16 +18,20 @@ export default function AudioRecorder({ onUploadComplete }: Props) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const durationRef = useRef(0);
 
   const startRecording = useCallback(async () => {
     setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : "audio/webm",
-      });
+
+      // Pick a supported mimeType — Safari doesn't support webm
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac"]
+        .find((t) => MediaRecorder.isTypeSupported(t));
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -37,7 +42,11 @@ export default function AudioRecorder({ onUploadComplete }: Props) {
       mediaRecorder.start(1000); // collect chunks every second
       setRecording(true);
       setDuration(0);
-      timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+      durationRef.current = 0;
+      timerRef.current = setInterval(() => {
+        durationRef.current += 1;
+        setDuration((d) => d + 1);
+      }, 1000);
     } catch {
       setError("Microphone access denied");
     }
@@ -63,10 +72,16 @@ export default function AudioRecorder({ onUploadComplete }: Props) {
     mediaRecorder.stream.getTracks().forEach((t) => t.stop());
 
     const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
-    const recordedDuration = duration;
+    const recordedDuration = durationRef.current;
 
-    if (blob.size === 0 || recordedDuration < MIN_DURATION) {
-      setError(recordedDuration < MIN_DURATION ? "Recording too short (min 2 seconds)" : "No audio recorded");
+    if (blob.size === 0) {
+      setError("No audio recorded — your browser may not support recording");
+      setDuration(0);
+      return;
+    }
+
+    if (recordedDuration < MIN_DURATION && blob.size < 5000) {
+      setError("Recording too short (min 2 seconds)");
       setDuration(0);
       return;
     }
@@ -75,15 +90,24 @@ export default function AudioRecorder({ onUploadComplete }: Props) {
     setUploading(true);
     setError("");
     try {
-      await uploadRecording(blob, "recording.webm", recordedDuration);
-      onUploadComplete?.();
+      const ext = blob.type.includes("mp4") ? "mp4" : blob.type.includes("aac") ? "aac" : "webm";
+      const result: UploadResult = await uploadRecording(blob, `recording.${ext}`, recordedDuration);
+      if (result.type === "command") {
+        onCommandResult?.(result.command_result);
+        // Still refresh entries in case the command modified them (delete, move)
+        if (result.command_result.action === "delete_entry" || result.command_result.action === "move_entry") {
+          onUploadComplete?.();
+        }
+      } else {
+        onUploadComplete?.();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
       setDuration(0);
     }
-  }, [onUploadComplete]);
+  }, [onUploadComplete, onCommandResult]);
 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;

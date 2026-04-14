@@ -7,6 +7,8 @@ from supabase import create_client
 
 from app.config import settings
 from app.deps import get_current_user
+from app.services.command_executor import execute_command
+from app.services.intent_classifier import classify_intent
 from app.services.tagger import tag_transcript
 from app.services.transcription import transcribe_audio
 
@@ -62,10 +64,25 @@ async def upload_recording(
     if not transcript or transcript.strip() in (".", ""):
         raise HTTPException(status_code=422, detail="Could not detect any speech. Try speaking louder or longer.")
 
-    # 3. Tag with Groq Llama (graceful degradation — save entry even if tagging fails)
+    # 3. Classify intent — is this a journal entry or a command?
+    intent_result = await classify_intent(transcript)
+
+    if intent_result["intent"] == "command":
+        # Execute the command, skip storing audio as an entry
+        command_result = await execute_command(
+            intent_result["command_type"], intent_result["params"], user_id
+        )
+        # Clean up the uploaded audio since it's not an entry
+        try:
+            supabase.storage.from_("recordings").remove([storage_path])
+        except Exception:
+            pass  # Non-critical cleanup
+        return {"type": "command", "command_result": command_result}
+
+    # 4. Tag with Groq Llama (graceful degradation — save entry even if tagging fails)
     metadata = await tag_transcript(transcript)
 
-    # 4. Save to database
+    # 5. Save to database
     entry = {
         "id": entry_id,
         "user_id": user_id,
@@ -85,4 +102,4 @@ async def upload_recording(
 
     result = supabase.table("entries").insert(entry).execute()
 
-    return {"entry": result.data[0] if result.data else entry}
+    return {"type": "entry", "entry": result.data[0] if result.data else entry}

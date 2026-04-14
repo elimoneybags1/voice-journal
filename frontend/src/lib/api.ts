@@ -88,8 +88,46 @@ export interface Entry {
   action_items: string[];
   audio_url: string | null;
   duration_seconds: number | null;
+  folder_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Folder {
+  id: string;
+  user_id: string;
+  name: string;
+  parent_id: string | null;
+  icon: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommandResult {
+  success: boolean;
+  message: string;
+  action: string;
+  data: Record<string, unknown> | null;
+}
+
+export interface UploadEntryResult {
+  type: "entry";
+  entry: Entry;
+}
+
+export interface UploadCommandResult {
+  type: "command";
+  command_result: CommandResult;
+}
+
+export type UploadResult = UploadEntryResult | UploadCommandResult;
+
+export interface Profile {
+  id: string;
+  timezone: string;
+  preferences: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface WeeklySummary {
@@ -127,7 +165,7 @@ export async function deleteEntry(id: string) {
 }
 
 // Upload recording
-export async function uploadRecording(audioBlob: Blob, filename: string, durationSeconds?: number) {
+export async function uploadRecording(audioBlob: Blob, filename: string, durationSeconds?: number): Promise<UploadResult> {
   const headers = await getAuthHeaders();
   const formData = new FormData();
   formData.append("file", audioBlob, filename);
@@ -143,7 +181,7 @@ export async function uploadRecording(audioBlob: Blob, filename: string, duratio
     const data = await res.json().catch(() => ({ detail: "Upload failed" }));
     throw new Error(data.detail || `Upload error: ${res.status}`);
   }
-  return res.json() as Promise<{ entry: Entry }>;
+  return res.json();
 }
 
 // Search
@@ -159,4 +197,26 @@ export async function fetchWeeklySummary(weekOf?: string) {
 
 export async function askJournal(question: string) {
   return apiPost<{ answer: string; entries_used: number }>("/insights/ask", { question });
+}
+
+// Folders
+export async function fetchFolders() {
+  return apiGet<{ folders: Folder[] }>("/folders/");
+}
+
+export async function createFolder(name: string, icon = "folder") {
+  return apiPost<{ folder: Folder }>("/folders/", { name, icon });
+}
+
+export async function deleteFolder(id: string) {
+  return apiDelete(`/folders/${id}`);
+}
+
+// Profile
+export async function fetchProfile() {
+  return apiGet<{ profile: Profile }>("/profiles/me");
+}
+
+export async function updateProfile(data: { timezone?: string; preferences?: Record<string, unknown> }) {
+  return apiPatch<{ profile: Profile }>("/profiles/me", data);
 }

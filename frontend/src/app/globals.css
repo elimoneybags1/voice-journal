@@ -19,6 +19,25 @@
   --danger: #EF4444;
 }
 
+[data-theme="light"] {
+  --bg-base: #FFFFFF;
+  --bg-surface: #F5F5F5;
+  --bg-elevated: #EBEBEB;
+  --bg-hover: #E0E0E0;
+  --text-primary: #1A1A1A;
+  --text-secondary: #4B5563;
+  --text-muted: #9CA3AF;
+  --accent: #5B9EF4;
+  --accent-muted: #3D6DA8;
+  --accent-pressed: #4A87D4;
+  --border: #E5E5E5;
+  --border-light: #D1D5DB;
+  --recording: #E8845C;
+  --recording-pressed: #D0734B;
+  --success: #4ADE80;
+  --danger: #EF4444;
+}
+
 @theme inline {
   --color-background: var(--bg-base);
   --color-foreground: var(--text-primary);

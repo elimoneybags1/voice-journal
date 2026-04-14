@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { fetchEntries, type Entry } from "@/lib/api";
+import { fetchEntries, fetchFolders, fetchProfile, type Entry, type Folder as ApiFolder, type CommandResult } from "@/lib/api";
 import AudioRecorder from "@/components/AudioRecorder";
 import EntryCard from "@/components/EntryCard";
 import FolderIcon from "@/components/FolderIcon";
 import Nav from "@/components/Nav";
+import Toast from "@/components/Toast";
 
 type View =
   | { mode: "home" }
@@ -81,6 +82,9 @@ export default function JournalPage() {
   const [view, setView] = useState<View>({ mode: "home" });
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [userFolders, setUserFolders] = useState<ApiFolder[]>([]);
 
   const loadEntries = useCallback(async () => {
     if (!user) return;
@@ -95,10 +99,44 @@ export default function JournalPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!authLoading && user) loadEntries();
+    if (!authLoading && user) {
+      loadEntries();
+      fetchFolders().then(({ folders }) => setUserFolders(folders)).catch(() => {});
+      fetchProfile().then(({ profile }) => {
+        const name = (profile.preferences?.display_name as string) || "";
+        setDisplayName(name);
+      }).catch(() => {});
+    }
   }, [authLoading, user, loadEntries]);
 
-  const folders = buildFolders(entries);
+  const handleCommandResult = useCallback((result: CommandResult) => {
+    setToast({
+      message: result.message,
+      type: result.success ? "success" : "error",
+    });
+    // Refresh folders if a folder was created
+    if (result.action === "create_folder" && result.success) {
+      fetchFolders().then(({ folders }) => setUserFolders(folders)).catch(() => {});
+    }
+  }, []);
+
+  const aiFolders = buildFolders(entries);
+  // Merge user-created folders (from API) with AI-generated category folders
+  const folders = (() => {
+    const merged = [...aiFolders];
+    for (const uf of userFolders) {
+      if (!merged.find((f) => f.name === uf.name)) {
+        const entriesInFolder = entries.filter((e) => e.folder_id === uf.id);
+        merged.push({
+          name: uf.name,
+          icon: uf.icon || "folder",
+          count: entriesInFolder.length,
+          subcategories: [],
+        });
+      }
+    }
+    return merged;
+  })();
 
   // Stats
   const now = new Date();
@@ -126,7 +164,8 @@ export default function JournalPage() {
 
   // Greeting
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greetBase = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = displayName ? `${greetBase}, ${displayName}` : greetBase;
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   if (authLoading || !user) {
@@ -139,6 +178,15 @@ export default function JournalPage() {
 
   return (
     <div className="flex flex-col min-h-screen pb-24">
+      {/* Toast */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
+      )}
+
       {/* Header */}
       <header className="px-5 pt-14 pb-1">
         <div className="flex items-center justify-between">
@@ -164,7 +212,7 @@ export default function JournalPage() {
       {view.mode === "home" && (
         <>
           {/* Recorder */}
-          <AudioRecorder onUploadComplete={loadEntries} />
+          <AudioRecorder onUploadComplete={loadEntries} onCommandResult={handleCommandResult} />
 
           {/* Quick Stats */}
           {entries.length > 0 && (
